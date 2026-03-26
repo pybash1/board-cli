@@ -18,7 +18,8 @@ use std::io;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 use tokio::runtime::Runtime;
-use crate::api::{BoardClient, DeviceCode, Paste, BoardApiError};
+use crate::api::{BoardClient, DeviceCode, Paste};
+use crate::config::AppConfig;
 
 #[cfg(test)]
 mod tests;
@@ -41,10 +42,10 @@ pub enum LoadingState {
 
 #[derive(Debug)]
 pub enum AsyncResult {
-    DeviceRegistered(BoardClient, DeviceCode),
+    DeviceRegistered(BoardClient, DeviceCode, AppConfig),
     PastesLoaded(Vec<Paste>),
     PasteCreated(Paste),
-    CustomDeviceSet(BoardClient, DeviceCode),
+    CustomDeviceSet(BoardClient, DeviceCode, AppConfig),
     Error(String),
 }
 
@@ -54,6 +55,7 @@ pub struct AppState {
     pub should_quit: bool,
     pub client: Option<BoardClient>,
     pub device_code: Option<DeviceCode>,
+    pub config: AppConfig,
     pub pastes: Vec<Paste>,
     pub selected_paste: Option<usize>,
     pub input_buffer: String,
@@ -78,11 +80,15 @@ impl App {
         let runtime = Runtime::new()?;
         let (async_sender, async_receiver) = mpsc::channel();
 
+        // Load configuration
+        let config = AppConfig::load()?;
+
         let state = AppState {
             mode: AppMode::Main,
             should_quit: false,
             client: None,
             device_code: None,
+            config,
             pastes: Vec::new(),
             selected_paste: None,
             input_buffer: String::new(),
@@ -99,8 +105,8 @@ impl App {
         let sender = async_sender.clone();
         runtime.spawn(async move {
             match Self::initialize_client().await {
-                Ok((client, device_code)) => {
-                    let _ = sender.send(AsyncResult::DeviceRegistered(client, device_code));
+                Ok((client, device_code, config)) => {
+                    let _ = sender.send(AsyncResult::DeviceRegistered(client, device_code, config));
                 }
                 Err(e) => {
                     let _ = sender.send(AsyncResult::Error(format!("Failed to initialize API client: {}", e)));
@@ -116,18 +122,28 @@ impl App {
         })
     }
 
-    async fn initialize_client() -> Result<(BoardClient, DeviceCode)> {
+    async fn initialize_client() -> Result<(BoardClient, DeviceCode, AppConfig)> {
+        let mut config = AppConfig::load()?;
         let mut client = BoardClient::new()?;
 
-        let device_code = if let Ok(existing_code) = std::env::var("BOARD_DEVICE_CODE") {
-            let code = DeviceCode::from(existing_code);
-            client.set_device_code(code.clone());
-            code
+        let device_code = if let Some(config_device_code) = config.get_device_code() {
+            // Use device code from config
+            client.set_device_code(config_device_code.clone());
+            config_device_code
+        } else if let Ok(env_device_code) = std::env::var("BOARD_DEVICE_CODE") {
+            // Migrate from environment variable to config
+            let device_code = DeviceCode::from(env_device_code);
+            config.set_device_code(device_code.clone())?;
+            client.set_device_code(device_code.clone());
+            device_code
         } else {
-            client.register_device().await?
+            // Register new device and save to config
+            let device_code = client.register_device().await?;
+            config.set_device_code(device_code.clone())?;
+            device_code
         };
 
-        Ok((client, device_code))
+        Ok((client, device_code, config))
     }
 
     pub fn run(&mut self) -> Result<()> {
@@ -174,16 +190,18 @@ impl App {
 
     fn handle_async_result(&mut self, result: AsyncResult) {
         match result {
-            AsyncResult::DeviceRegistered(client, device_code) => {
+            AsyncResult::DeviceRegistered(client, device_code, config) => {
                 self.state.client = Some(client);
                 self.state.device_code = Some(device_code.clone());
+                self.state.config = config;
                 self.state.status_message = format!("Connected with device: {}", device_code);
                 self.stop_loading();
                 self.refresh_pastes();
             }
-            AsyncResult::CustomDeviceSet(client, device_code) => {
+            AsyncResult::CustomDeviceSet(client, device_code, config) => {
                 self.state.client = Some(client);
                 self.state.device_code = Some(device_code.clone());
+                self.state.config = config;
                 self.state.status_message = format!("Connected with custom device: {}", device_code);
                 self.state.mode = AppMode::Main;
                 self.state.input_buffer.clear();
@@ -337,18 +355,23 @@ impl App {
         let sender = self.async_sender.clone();
         self.runtime.spawn(async move {
             match async {
+                let mut config = AppConfig::load()?;
                 let mut client = BoardClient::new()?;
                 let device_code = DeviceCode::from(code);
                 client.set_device_code(device_code.clone());
 
                 // Test the connection by trying to get pastes
                 match client.get_all_pastes().await {
-                    Ok(_) => Ok((client, device_code)),
-                    Err(e) => Err(e),
+                    Ok(_) => {
+                        // Save the device code to config
+                        config.set_device_code(device_code.clone())?;
+                        Ok((client, device_code, config))
+                    }
+                    Err(e) => Err(anyhow::Error::from(e)),
                 }
             }.await {
-                Ok((client, device_code)) => {
-                    let _ = sender.send(AsyncResult::CustomDeviceSet(client, device_code));
+                Ok((client, device_code, config)) => {
+                    let _ = sender.send(AsyncResult::CustomDeviceSet(client, device_code, config));
                 }
                 Err(e) => {
                     let _ = sender.send(AsyncResult::Error(format!("Invalid device code: {}", e)));
@@ -434,12 +457,17 @@ impl App {
         let sender = self.async_sender.clone();
         self.runtime.spawn(async move {
             match async {
+                let mut config = AppConfig::load()?;
                 let mut client = BoardClient::new()?;
                 let device_code = client.register_device().await?;
-                Ok::<(BoardClient, DeviceCode), BoardApiError>((client, device_code))
+
+                // Save the device code to config
+                config.set_device_code(device_code.clone())?;
+
+                Ok::<(BoardClient, DeviceCode, AppConfig), anyhow::Error>((client, device_code, config))
             }.await {
-                Ok((client, device_code)) => {
-                    let _ = sender.send(AsyncResult::DeviceRegistered(client, device_code));
+                Ok((client, device_code, config)) => {
+                    let _ = sender.send(AsyncResult::DeviceRegistered(client, device_code, config));
                 }
                 Err(e) => {
                     let _ = sender.send(AsyncResult::Error(format!("Failed to register device: {}", e)));

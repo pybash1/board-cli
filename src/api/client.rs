@@ -15,6 +15,8 @@ pub struct BoardClientConfig {
     pub user_agent: String,
     /// Device code for authentication (optional - can be set later)
     pub device_code: Option<DeviceCode>,
+    /// App password for authentication (optional - can be set later)
+    pub app_password: Option<String>,
 }
 
 impl Default for BoardClientConfig {
@@ -24,7 +26,27 @@ impl Default for BoardClientConfig {
             timeout: Duration::from_secs(30),
             user_agent: "board-cli/0.1.0".to_string(),
             device_code: None,
+            app_password: None,
         }
+    }
+}
+
+impl BoardClientConfig {
+    /// Create a BoardClientConfig from AppConfig
+    pub fn from_app_config(app_config: &crate::config::AppConfig) -> Self {
+        let mut config = Self::default();
+
+        // Set app password if available
+        if let Some(password) = app_config.get_app_password() {
+            config.app_password = Some(password.to_string());
+        }
+
+        // Set device code if available
+        if let Some(device_code) = app_config.get_device_code() {
+            config.device_code = Some(device_code);
+        }
+
+        config
     }
 }
 
@@ -98,17 +120,16 @@ impl BoardClient {
 
     /// Create a new paste with raw content
     pub async fn create_paste(&self, content: &str) -> ApiResult<Paste> {
-        let device_code = self.config.device_code.as_ref()
-            .ok_or(BoardApiError::NoDeviceCode)?;
-
         let url = format!("{}/", self.config.base_url);
 
-        let response = self
+        let request = self
             .client
             .put(&url)
-            .header("Device-Code", device_code.as_str())
             .header("Content-Type", "text/plain")
-            .body(content.to_string())
+            .body(content.to_string());
+
+        let response = self
+            .add_auth_header(request)?
             .send()
             .await
             .map_err(BoardApiError::Request)?;
@@ -131,15 +152,14 @@ impl BoardClient {
 
     /// Get the content of a paste by its ID
     pub async fn get_paste(&self, paste_id: &PasteId) -> ApiResult<String> {
-        let device_code = self.config.device_code.as_ref()
-            .ok_or(BoardApiError::NoDeviceCode)?;
-
         let url = format!("{}/{}", self.config.base_url, paste_id.as_str());
 
-        let response = self
+        let request = self
             .client
-            .get(&url)
-            .header("Device-Code", device_code.as_str())
+            .get(&url);
+
+        let response = self
+            .add_auth_header(request)?
             .send()
             .await
             .map_err(BoardApiError::Request)?;
@@ -149,15 +169,14 @@ impl BoardClient {
 
     /// Get all paste IDs associated with the current device
     pub async fn list_pastes(&self) -> ApiResult<Vec<PasteId>> {
-        let device_code = self.config.device_code.as_ref()
-            .ok_or(BoardApiError::NoDeviceCode)?;
-
         let url = format!("{}/all", self.config.base_url);
 
-        let response = self
+        let request = self
             .client
-            .get(&url)
-            .header("Device-Code", device_code.as_str())
+            .get(&url);
+
+        let response = self
+            .add_auth_header(request)?
             .send()
             .await
             .map_err(BoardApiError::Request)?;
@@ -190,6 +209,19 @@ impl BoardClient {
     /// Build a full URL for a paste ID
     pub fn build_paste_url(&self, paste_id: &PasteId) -> String {
         format!("{}/{}", self.config.base_url, paste_id.as_str())
+    }
+
+    /// Add authentication headers to a request builder
+    /// Always sends Device-Code header, and App-Password header (even if empty)
+    fn add_auth_header(&self, request: reqwest::RequestBuilder) -> ApiResult<reqwest::RequestBuilder> {
+        let device_code = self.config.device_code.as_ref()
+            .ok_or(BoardApiError::NoDeviceCode)?;
+
+        let app_password = self.config.app_password.as_deref().unwrap_or("");
+
+        Ok(request
+            .header("Device-Code", device_code.as_str())
+            .header("App-Password", app_password))
     }
 
     /// Handle a JSON response from the API

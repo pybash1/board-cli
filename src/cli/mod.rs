@@ -30,4 +30,24 @@ pub enum Commands {
     Show,
     /// Register a new device
     Register,
+    /// Device management commands
+    Device {
+        #[command(subcommand)]
+        action: DeviceActions,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum DeviceActions {
+    /// Show current device code
+    Show,
+    /// Set device code manually
+    Set {
+        /// Device code to use
+        code: String,
+    },
+    /// Clear the stored device code
+    Clear,
+    /// Register a new device and set it as current
+    New,
 }

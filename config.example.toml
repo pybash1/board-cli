@@ -1,0 +1,19 @@
+# Example configuration file for board-cli
+# Copy this to ~/.config/board/config.toml and customize
+
+data_dir = "~/.board-cli"
+theme = "default"
+auto_save = true
+
+# Authentication:
+# Both device_code (required) and app_password (optional) are used
+
+# Device code (REQUIRED) - set automatically when you run:
+# - board register
+# - board device new
+# - board device set your_code
+device_code = "your_device_code_here"
+
+# App password (OPTIONAL) - set manually for additional authentication
+# If not set or empty, an empty string will be sent as the App-Password header
+app_password = "your_app_password_here"

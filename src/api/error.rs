@@ -25,7 +25,7 @@ pub enum BoardApiError {
     Io(#[from] std::io::Error),
 
     /// Device code not set
-    #[error("Device code not set - call register_device() first")]
+    #[error("Device code not configured - run 'board register' or 'board device new' first")]
     NoDeviceCode,
 
     /// Invalid paste ID format
