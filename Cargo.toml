@@ -29,9 +29,16 @@ config = "0.14"
 # Directory utilities
 dirs = "5.0"
 
-# Async runtime (optional, for future expansion)
-tokio = { version = "1.0", features = ["full"], optional = true }
+# HTTP client for API
+reqwest = { version = "0.12", features = ["json"] }
+url = "2.5"
+
+# Async runtime (now required for API client)
+tokio = { version = "1.0", features = ["full"] }
+
+# Clipboard functionality (optional, graceful fallback if unavailable)
+arboard = { version = "3.4", optional = true }
 
 [features]
-default = []
-async = ["tokio"]
+default = ["clipboard"]
+clipboard = ["arboard"]
