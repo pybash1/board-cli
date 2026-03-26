@@ -1090,4 +1090,16 @@ impl App {
             f.render_widget(error_dialog, area);
         }
     }
+
+    /// Get the current should_quit state for testing
+    #[cfg(test)]
+    pub fn should_quit(&self) -> bool {
+        self.state.should_quit
+    }
+
+    /// Set the should_quit state for testing
+    #[cfg(test)]
+    pub fn set_should_quit(&mut self, should_quit: bool) {
+        self.state.should_quit = should_quit;
+    }
 }

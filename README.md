@@ -49,7 +49,23 @@ Set an app password in your configuration file at `~/.config/board/config.toml`:
 app_password = "your_app_password_here"
 ```
 
-If no app password is configured, an empty value will be sent.
+**Special Behavior for Default API**: When using the default API URL (`https://board-api.pybash.xyz`), the app password **must** be embedded from the `BOARD_APP_PASSWORD` environment variable at **build time**. This means the password value is compiled into the binary and used regardless of runtime environment variables:
+
+```bash
+# Set environment variable BEFORE building (REQUIRED for default API)
+export BOARD_APP_PASSWORD="your_secure_password"
+cargo build --release
+```
+
+The built binary will use the embedded password value on any machine, even if `BOARD_APP_PASSWORD` is not set in the runtime environment.
+
+**Important**:
+- `BOARD_APP_PASSWORD` **must** be set at build time when using the default API URL
+- If `BOARD_APP_PASSWORD` is missing, empty, or contains only whitespace, the build will panic at runtime to prevent accidental deployment with invalid credentials
+
+For other API URLs, the app password from the config file is used as normal.
+
+If no app password is configured (either in config or environment), an empty value will be sent.
 
 ### API Headers
 
@@ -98,6 +114,8 @@ auto_save = true
 device_code = "your_device_code_here"
 
 # App password (optional) - set manually in config
+# For the default API URL (https://board-api.pybash.xyz),
+# this is ignored and BOARD_APP_PASSWORD is embedded at build time instead
 app_password = "your_app_password_here"
 ```
 

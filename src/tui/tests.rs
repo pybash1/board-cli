@@ -6,7 +6,7 @@ fn test_app_creation() {
     assert!(app.is_ok());
 
     let app = app.unwrap();
-    assert_eq!(app.should_quit, false);
+    assert_eq!(app.should_quit(), false);
 }
 
 #[test]
@@ -14,9 +14,9 @@ fn test_app_state() {
     let mut app = App::new().unwrap();
 
     // Initially should not be quitting
-    assert_eq!(app.should_quit, false);
+    assert_eq!(app.should_quit(), false);
 
     // Simulate quit
-    app.should_quit = true;
-    assert_eq!(app.should_quit, true);
+    app.set_should_quit(true);
+    assert_eq!(app.should_quit(), true);
 }

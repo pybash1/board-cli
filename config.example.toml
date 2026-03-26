@@ -16,4 +16,13 @@ device_code = "your_device_code_here"
 
 # App password (OPTIONAL) - set manually for additional authentication
 # If not set or empty, an empty string will be sent as the App-Password header
+#
+# SPECIAL BEHAVIOR: When using the default API URL (https://board-api.pybash.xyz),
+# this setting is ignored and the app password MUST be embedded from the BOARD_APP_PASSWORD
+# environment variable at BUILD TIME. The embedded value is used regardless of runtime
+# environment variables. This allows for secure password handling during compilation.
+#
+# IMPORTANT: For the default API URL, BOARD_APP_PASSWORD MUST be set at build time.
+# If it's missing, empty, or whitespace-only, the application will panic to prevent
+# accidental deployment with invalid credentials.
 app_password = "your_app_password_here"
